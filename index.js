@@ -31,6 +31,12 @@ hexo.extend.filter.register(
         let dir_public = this.public_dir
         let dir_images = path.join(dir_public, data.path, "images")
 
+        // 生成文件到MkDocs目录
+        let mkdocsPath = path.join(dir_root, '/../MkDocs/docs')
+        let mkdocsImagePath = path.join(mkdocsPath, '/images')
+        await dirExists(mkdocsPath)
+        await dirExists(mkdocsImagePath)
+
         while ((matchs = pattern.exec(data.content)) != null) {
             let match = matchs[0]
             let title = matchs[1]
@@ -53,13 +59,39 @@ hexo.extend.filter.register(
             links = links.concat(absolute_images).concat(relative_images)
             fs.copyFileSync(filePath, path.join(dir_images, path.basename(filePath)))
 
+            // 拷贝图片到MkDOcs目录
+            fs.copyFileSync(filePath, path.join(mkdocsImagePath, path.basename(filePath)))
+
             if ([".mp4", ".webm", ".ogg"].includes(path.extname(filePath))) {
                 content = content.replace(match, encodeURI("images/" + path.basename(filePath)))
             } else {
                 content = content.replace(ourl, encodeURI("images/" + path.basename(filePath)))
             }
         }
-        data.content = content
+        data.content = content    
+        
+        // 输出处理后的MD到MkDocs目录
+        let patternForMD = /(_posts\/)(.*\.md)/g
+        let patternForMeta = /---(.*?)---/gs
+
+        while ((matchs = patternForMD.exec(data.source)) != null) {
+            let mkdocsContent = data.content
+            // 修复URL
+            mkdocsContent = mkdocsContent.replace(/\/posts/g,'')
+
+            // 重新添加元数据信息
+            let mkdocsMeta = patternForMeta.exec(data.raw)[0]
+            mkdocsContent = mkdocsMeta + mkdocsContent
+
+            fs.writeFile(path.join(mkdocsPath, (data.abbrlink.toString()+'.md')), mkdocsContent,function(){})
+            // 向SUMMARY.md中追加内容 例：- [MkDocs使用技巧](202201010000.md)
+            fs.appendFile(path.join(mkdocsPath,  '/SUMMARY.md'), ('\n- ['+data.slug+']('+data.abbrlink+'.md)'), function (err) {
+                if (err) {
+                    throw new Error("写入SUMMARY.md失败")
+                }
+            })
+
+        }
 
         return data
     },
